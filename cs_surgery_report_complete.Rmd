@@ -1,0 +1,441 @@
+---
+title: 'Single-Cell Workshop: Cynthia Sandor Data'
+author: "Davis McCarthy, EMBL-EBI"
+date: "9 September 2016"
+output: 
+    html_document:
+        toc: true
+        toc_float: true
+        highlight: tango
+        number_sections: true
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE, 
+                      warning = FALSE, fig.align="center")
+suppressPackageStartupMessages(library(scater))
+par(mar = c(3, 1, 1, 3))
+```
+
+# Single-Cell Data Surgery: Cynthia Sandor's Data {data-background="EMBL-EBI_Keynote_template_title_slide_bg.jpg"} 
+
+## Aims for this dataset 
+
+QC the data appropriately and then find genes differentially expressed between cells with different genotypes.
+
+
+## Tasks for this dataset 
+
+1. Load data then QC cells and genes
+2. Normalise data
+3. Investigate and correct batch effects
+4. Visualise data [throughout]
+5. Explore methods for differential expression (DE) analysis
+
+
+# QC
+
+## Task: QC cells and genes 
+
+* Load the data into an SCESet object
+* QC cells using appropriate functions in `scater`
+* Filter out genes with very low average expression
+
+## Load data into SCESet 
+
+```{r load-data}
+load("cs_scater_workshop.RData")
+pd <- new("AnnotatedDataFrame", scater_wt_cell)
+sce <- newSCESet(countData = scater_wt_counts, phenoData = pd)
+sce
+```
+Expression values are log2(cpm + 1).
+
+## Get gene annotations 
+
+```{r get-feature-annos}
+sce <- getBMFeatureAnnos(
+    sce, filters = "ensembl_gene_id",
+    attributes = c("ensembl_gene_id", "hgnc_symbol", "chromosome_name", 
+                   "start_position", "end_position", "strand", "gene_biotype"),
+    feature_symbol = "hgnc_symbol",
+    feature_id = "ensembl_gene_id", biomart = "ENSEMBL_MART_ENSEMBL",
+    dataset = "hsapiens_gene_ensembl", host = "www.ensembl.org")
+head(fData(sce), n = 1)
+```
+
+## View cell metadata 
+
+```{r view-pdata}
+head(pData(sce))
+```
+
+
+
+```{r overview-plot, fig.height=5.5}
+plot(sce, block1 = "Lab", block2 = "Genotype", colour_by = "cell_bulk",
+     exprs_values = "counts")
+```
+
+## Calculate QC metrics 
+
+```{r calc-qc-metrics}
+#Two sets of feature controls: ERCC spike ins & mitochondrial genes
+fctrls <- featureNames(sce)[grepl("ERCC-", featureNames(sce))]
+fctrls2 <- featureNames(sce)[grepl("MT", fData(sce)$chromosome_name)]
+#Cell controls are bulks and empty wells
+cctrls <- cellNames(sce)[pData(sce)$cell_bulk == "bulk"]
+#Set threshold of 80% of reads from feature controls to flag cell
+sce <- calculateQCMetrics(
+    sce,  
+    feature_controls = list(ERCC_ctrl = fctrls, mt_ctrl = fctrls2),
+    cell_controls = list(bulks = cctrls),
+    nmads = 8, pct_feature_controls_threshold = 80)
+```
+
+
+
+
+```{r plot-pheno-detected-genes-complexity, fig.height = 5}
+plotPhenoData(sce, aes(x = pct_counts_top_200_features, y = total_features,
+                       colour = cell_bulk, size = log10_total_counts)) +
+    geom_hline(yintercept = 2500, linetype = 2) + 
+    geom_vline(xintercept = 50, linetype = 2)
+```
+
+
+
+```{r plot-pheno-detected-genes-complexity-2, fig.height = 5}
+plotPhenoData(sce, aes(x = pct_counts_top_200_features, y = cDNA_ng_per_ul,
+                       colour = cell_bulk, size = log10_total_counts)) +
+    geom_vline(xintercept = 50, linetype = 2) + coord_cartesian(ylim = c(0, 2.2))
+```
+
+
+
+```{r plot-pheno-detected-genes-total-counts, fig.height = 5}
+plotPhenoData(sce, aes(x = pct_counts_top_200_features, y = pct_counts_feature_controls,
+                       colour = cell_bulk, size = log10_total_counts)) +
+    stat_smooth(colour = "firebrick2", linetype = 2) + geom_hline(yintercept = 13, linetype = 2)
+```
+
+
+
+
+```{r plot-pca-outlier-detect, results = 'hide', message=FALSE, fig.height=4.5}
+sce <- plotPCA(sce, size_by = "pct_counts_top_200_features", shape_by = "cell_bulk", 
+                   pca_data_input = "pdata", detect_outliers = TRUE,
+                   return_SCESet = TRUE, selected_variables = c("cDNA_ng_per_ul", "pct_counts_top_200_features", "total_features", "pct_counts_feature_controls", "n_detected_feature_controls", "log10_counts_endogenous_features", "log10_counts_feature_controls"))
+```
+
+
+
+```{r plot-pca-exprs, results = 'hide', message=FALSE, fig.height=4.5}
+plotPCA(sce, size_by = "pct_counts_top_200_features", shape_by = "cell_bulk",
+        colour_by = "outlier") + ggtitle("PCA using expression values")
+```
+
+
+
+```{r plot-pca-exprs-2, results = 'hide', message=FALSE, fig.height=4.5}
+plotPCA(sce, size_by = "pct_counts_top_200_features", shape_by = "Lab",
+        colour_by = "Genotype") + ggtitle("PCA using expression values")
+```
+
+
+
+```{r plot-pca-exprs-3, results = 'hide', message=FALSE, fig.height=4.5}
+plotPCA(sce, size_by = "pct_counts_top_200_features", shape_by = "Genotype",
+        colour_by = "Lab") + ggtitle("PCA using expression values")
+```
+
+
+## Filter cells
+
+```{r filter-cells}
+sce$use <- (sce$total_features > 2000 & # sufficient genes detected
+                sce$pct_counts_top_200_features < 50 & # sufficient library complexity
+                sce$pct_counts_feature_controls < 14 & # sufficient endogenous RNA
+                sce$total_counts > 1e5 & # sufficient reads mapped to features
+                !sce$filter_on_total_features & # remove cells with unusual numbers of genes
+                !sce$is_cell_control # controls shouldn't be used in downstream analysis
+)
+knitr::kable(as.data.frame(table(sce$use)))
+```
+
+
+
+```{r plot-pca-exprs-post-filt, results = 'hide', message=FALSE, fig.height=4.5}
+plotPCA(sce[, sce$use], size_by = "pct_counts_top_200_features", shape_by = "Genotype",
+        colour_by = "Lab") + ggtitle("PCA after filtering cells")
+```
+
+
+
+```{r plotqc-pcs, fig.height = 5}
+plotQC(sce[, sce$use], type = "find-pcs", variable = "Lab" )
+```
+
+
+
+```{r plotqc-pcs-2, fig.height = 5}
+plotQC(sce[, sce$use], type = "find-pcs", variable = "Genotype" )
+```
+
+
+## PlotQC: most highly expressed genes  {data-background="ebi_slide_bg.jpg"}
+
+```{r plotqc-highest-expression, fig.height=4}
+plotQC(sce, type = "highest-expression", exprs_values = "counts", n = 20) +
+    theme(axis.text.y = element_text(size = 10),
+              axis.title = element_text(size = 11))
+```
+
+## PlotQC: expression frequency against mean {data-background="ebi_slide_bg.jpg"}
+
+```{r plotqc-exprs-vs-mean, fig.height=4}
+plotQC(sce, type = "exprs-freq-vs-mean", feature_controls = fctrls)
+```
+
+## Filter genes
+
+```{r filter-genes}
+keep_gene <- rowMeans(counts(sce)) >= 1
+fData(sce)$use <- keep_gene
+knitr::kable(as.data.frame(table(keep_gene)))
+```
+
+
+# Normalise expression data
+
+## Task: Scaling normalisation
+
+* Use the methods from the `scran` package to apply scaling normalisation to the data.
+* Look at the functions `isSpike`, `computeSumFactors`, `computeSpikeFactors` and `normalise`
+
+## Scaling normalisation
+
+```{r normalise-scran}
+library(scran)
+sce <- sce[fData(sce)$use, sce$use]
+isSpike(sce) <- "ERCC_ctrl"
+sce <- computeSumFactors(sce, sizes = c(20, 40, 60, 80))
+summary(sizeFactors(sce))
+sce <- computeSpikeFactors(sce, type = "ERCC_ctrl", general.use = FALSE)
+sce <- normalise(sce, return_norm_as_exprs = FALSE)
+```
+
+
+
+```{r plot-pca-exprs-norm, results = 'hide', message=FALSE, fig.height=4.5, fig.width=11}
+p1 <- plotPCA(sce, size_by = "total_features", shape_by = "Genotype",
+        colour_by = "Lab") + ggtitle("PCA before normalisation")
+p2 <- plotPCA(sce, size_by = "total_features", shape_by = "Genotype",
+        colour_by = "Lab", exprs_values = "norm_exprs") + ggtitle("PCA after normalisation")
+multiplot(p1, p2, cols = 2)
+```
+
+
+## Important explanatory variables
+
+```{r plotqc-expl-var, fig.width=8}
+plotQC(sce, type = "expl", 
+        variables = c("pct_counts_top_100_features", "total_features", 
+                      "pct_counts_feature_controls", "Lab",
+                      "n_detected_feature_controls", "Genotype",
+                      "log10_counts_endogenous_features",
+                      "log10_counts_feature_controls"))
+```
+
+
+
+# Batch effect
+
+## Batch effect
+
+The PCA plots above show that scaling normalisation does not remove batch effects (this is beyond its scope).
+
+Options for dealing with batch effects (in order of preference):
+
+1. Design the experiment to avoid them
+2. Model them explicitly
+3. Adjust/correct data to remove or ameliorate them
+
+* Here we will address (3)
+
+## Correcting for batch effects
+
+Options:
+
+* Using a method to identify and remove hidden/latent factors from the data. I have had good results with the `RUVs` method from the `RUVSeq` package.
+* Regressing out known factors [shown here].
+
+## Task: Regress out Lab effect
+
+* Use `scater`'s `normaliseExprs()` function to regress out the Lab effect.
+* Compare results of this adjustment to previous normalisation results.
+
+
+## Regressing out known factors
+
+```{r regress-factors-norm}
+design <- model.matrix(~sce$Lab)
+set_exprs(sce, "norm_exprs_resid") <- norm_exprs(
+    normaliseExprs(sce, design = design,
+                   method = "none", exprs_values = "exprs",
+                   return_norm_as_exprs = FALSE))
+```
+
+
+
+```{r plot-pca-regress-factors-norm, fig.height = 4.5, fig.width=11}
+p3 <- plotPCA(sce, exprs_values = "norm_exprs_resid", shape_by = "Genotype", 
+    colour_by = "Lab", size_by = "total_features") + 
+    ggtitle("PCA - size-factor normalisation residuals")
+multiplot(p2, p3, cols = 2)
+```
+
+
+
+```{r plot-tsne-regress-factors-norm, fig.height = 4.5}
+plotTSNE(sce, exprs_values = "norm_exprs_resid", shape_by = "Lab", 
+    colour_by = "Genotype", size_by = "total_features", rand_seed = 5) + 
+    ggtitle("t-SNE - size-factor normalisation residuals")
+```
+
+
+# Differential Expression Analysis
+
+## Do we need to filter genes/libraries beore DE analysis?
+
+* Yes
+* Filter libraries we believe to be problematic, as done in our QC previously
+* We can increase power to detect DE genes (reducing multiple-testing burden) by filtering genes, **BUT**...
+* We have to be careful with gene filtering: must not filter on gene attributes associated with DE testing itself, or we will bias results and p-values/FDR will no longer be accurate
+* Generally safe and useful approach is to filter out genes with low expression in a way that is blind to which group/experimental condition/etc they belong to
+
+
+## Tools for DE analysis
+
+* `edgeR` [Bioc]: use `trend.method="none"` argument in `estimateDisp` call
+* `scde` [Bioc]
+* `M3Drop` [Bioc]
+* `MAST` [devtools::install_github("RGLab/MAST@summarizedExpt"")]
+* `BPSC` [devtools::install_github("nghiavtr/BPSC")]
+* `scDD` [devtools::install_github("kdkorthauer/scDD")]
+
+## What's the best method for DE?
+
+**It depends...**
+
+## Our methodological desires...
+
+We To find genes DE between PSEN1 and control cells accounting for Lab effects (at least). So we want the following in a DE method/tool:
+
+1. can handle general experimental designs
+2. accounts for characteristics of single-cell expression data (e.g. bimodal distributions)
+3. is fast
+
+(a good tool should also be reliable, easily available, and well supported)
+
+**Choose two.**
+
+## Pros/cons
+
+* `edgeR`: general designs, fast, reliable | negative binomial distribution (unimodal)
+* `MAST`: general designs, single-cell model | fast, reliable(?)
+* `BPSC`: general designs, single-cell model | fast(?), reliable(?), 
+* `scde`: single-cell model | fast, reliable(?), general designs
+* `scDD`: single-cell model (non-parametric) | fast(?), reliable(?), general designs(?)
+
+## Interpretation of results
+
+* Specific threshold on p-value and/or fold-change
+* Comparison with the results of bulk experiments
+
+
+## Tasks: DE analysis with edgeR
+
+* Fit a model in edgeR with both Lab and Genotype effects
+* Find genes that are DE between different genotypes
+
+Tips:
+
+* Use the `convertTo` function in `scran` to convert an SCESet to a DGEList for `edgeR` analysis. (This retains necessary metadata, including normalisation factors previously computed.)
+
+
+## edgeR estimate dispersion
+
+```{r edgeR-de-estimate-disp}
+library(edgeR)
+dge <- convertTo(sce, "edgeR")
+design <- model.matrix(~Lab + Genotype, data = pData(sce))
+head(design)
+dge <- estimateDisp(dge, design, trend.method = "none")
+```
+
+## edgeR plot biological CV
+
+```{r plot-bcv, fig.height=5}
+plotBCV(dge)
+```
+
+## edgeR fit quasi-likelihood GLM
+
+```{r edgeR-fit}
+fit <- glmFit(dge, design, prior.count = 0.5)
+results <- glmLRT(fit)
+summary(decideTestsDGE(results))
+topTags(results)
+```
+
+
+## edgeR MA plot
+
+```{r plot-smear, fig.height=4.5}
+n_de <- sum(abs(decideTestsDGE(results, p.value = 0.001)))
+de_tags <- rownames(topTags(results, n = n_de)$table)
+plotSmear(results, de.tags = de_tags, smooth.scatter = TRUE, 
+          lowess = TRUE, cex = 0.4)
+```
+
+## Expression for top edgeR DE genes
+
+```{r top-de-genes-edgeR}
+plotExpression(sce, de_tags[1:6], x = "Genotype", colour_by = "Lab", ncol = 3)
+```
+
+
+## M3Drop - Michaelis-Menten modeling of dropouts
+
+```{r m3drop, fig.height=4.5}
+library("M3Drop")
+m3_fit <- M3DropDropoutModels(counts(sce))
+```
+
+## M3Drop - DE genes
+
+```{r m3drop-de, fig.height=5}
+m3_de <- M3DropDifferentialExpression(counts(sce), 
+			mt_method = "fdr", mt_threshold = 0.01)
+```
+
+
+
+## scDD
+
+In principle, the below should work...but it did not for me. 
+
+As it is not on CRAN or Bioconductor, there is no established forum for asking questions and obtaining advice, and (it would appear here) that it is not as reliable as it should be.
+
+```{r scdd, eval=FALSE}
+eset <- ExpressionSet(assayData(sce))
+exprs(eset) <- get_exprs(sce, "exprs")
+eset$condition <- as.numeric(as.factor(sce$Genotype))
+sdd_res <- scDD(eset, testZeroes = FALSE)
+```
+
+I'll leave it with you to explore further options for DE testing. Many good tools are available, but it's still the wild west out there.
+
+

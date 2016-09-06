@@ -1,0 +1,324 @@
+---
+title: 'Single-Cell Workshop: WIMM, Oxford'
+author: "Davis McCarthy, EMBL-EBI"
+date: "9 September 2016"
+output: 
+    html_document:
+        toc: true
+        toc_float: true
+        highlight: tango
+        number_sections: true
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+suppressPackageStartupMessages(library(scater))
+```
+
+# Single-Cell Data Surgery: James Kinchen's Data 
+
+## Brief background
+
+A (very brief) summary of the objective / problem:
+
+- Inflammatory bowel diseases (IBD) are unpredictable both in terms of natural history and response to existing therapies
+- While bulk transcriptomic profiles are established in clinical use to predict outcome and treatment response in many cancers, they have not proved useful in the management of IBD.
+- This may be because transciptomic changes detected at bulk level largely reflect changes in the cellular composition of the mucosa.
+
+
+## Brief background 
+
+- James and colleagues are using scRNAseq and cell and gene clustering approaches to identify cell-type specific gene-expression signatures, and observing how these change in disease states.
+- Using this approach they hope to gain a more detailed picture of the immunopathology of IBD as well as identifying pathways for therapeutic intervention and clinically-useful biomarkers.
+
+
+## Tasks for this dataset 
+
+1. Load data and QC cells
+2. <del>Normalise data</del>
+3. Visualise data 
+4. [Advanced] Use `WGCNA` package to find gene modules
+
+# QC the data 
+
+## Task: QC the data {data-background="ebi_slide_bg.jpg"}
+
+* `calculateQCMetrics` using ERCC and MT genes as feature controls and bulk and empty wells as cell controls
+* `plot`, `plotQC`: highest expression in single cells, bulks and empty wells
+* `plotPhenoData`: look at total counts and total features, colour/size by other cell metadata
+* Decide on cell QC thresholds and flag cells to filter
+* `plotPCA`: with and without cell QC filtering
+
+What can you learn about this dataset?
+
+
+## Load data and default plot 
+
+```{r load-data, echo=TRUE}
+
+```
+
+```{r plot-data, fig.height = 4}
+plot(sce, colour_by = "description", nfeatures = 1000)
+```
+
+
+
+## Calculate QC metrics 
+
+```{r calc-qc-metrics}
+
+```
+
+
+## PlotQC: most highly expressed genes 
+
+```{r plotqc-highest-expression, fig.height=4}
+
+```
+
+
+## PlotQC: highly expressed in single cells 
+
+```{r plotqc-highest-exprs-single-cells, fig.height=4}
+
+```
+
+
+## PlotQC: highly expressed in bulks 
+
+```{r plotqc-highest-exprs-bulks, fig.height=4}
+
+```
+
+
+## PlotQC: highly expressed in empty wells 
+
+```{r plotqc-highest-exprs-empty-wells, fig.height=4}
+
+```
+
+
+## PlotQC: expression frequency against mean 
+
+```{r plotqc-exprs-vs-mean, fig.height=4}
+
+```
+
+
+## plotPhenoData: total features vs counts 
+
+```{r plotphenodata, fig.height=4}
+
+```
+
+
+## plotPhenoData: decide QC thresholds 
+
+```{r set-qc-thresholds, fig.width=8}
+
+```
+
+
+## Filter cells 
+
+```{r filter-cells-2}
+
+```
+
+
+## Pre and post QC PCA plots 
+
+```{r pca-plot-pre-qc}
+
+```
+
+
+```{r pca-plot-post-qc}
+
+```
+
+
+
+# Visualise the data
+
+## Task: Inspect clusters using known cell type markers
+
+Make PCA and t-SNE plots, with points coloured/sized by known marker genes: *ITLN1*, *MUC2*, *MK167*, *MCM4*, *CEACAM1*, and *SLC26A3*
+
+
+## Inspect clusters with PCA and t-SNE
+
+```{r plotpca-1}
+
+```
+
+
+
+```{r plot-tsne-1}
+
+```
+
+
+
+
+```{r plotpca-2}
+
+```
+
+
+
+
+```{r plot-tsne-2}
+
+```
+
+
+
+
+```{r plotpca-3}
+
+```
+
+
+
+```{r plot-tsne-3}
+
+```
+
+
+
+
+# Find gene modules [advanced]
+
+## Find gene modules with WGCNA
+
+Requires the following packages: `WGCNA` (gene correlation analysis) and `gplots` (heatmaps)
+
+```{r wgcna}
+##WGCNA analysis##
+##################
+#source("http://bioconductor.org/biocLite.R")
+#biocLite(c("AnnotationDbi", "impute", "GO.db", "preprocessCore"))
+#install.packages('WGCNA')
+#install.packages("gplots")
+suppressPackageStartupMessages(library("WGCNA"))
+suppressPackageStartupMessages(library("gplots"))
+```
+
+## Task: find and analyse gene modules
+
+* Use normalised expression values in SCESet to compute an adjacency matrix in `WGCNA` 
+* Use hierarchical clustering to get a dendrogram (tree) for genes
+* Find central genes for important modules
+* Visualise with a heatmap
+
+
+## Organise data
+
+Extract normalised expression data for cells passing QC
+```{r extract-norm-data}
+
+```
+
+Transpose the dataset - need samples as rows, features as columns
+```{r transpose-dataset}
+
+```
+
+
+## Compute adjacency matrix and convert to distance
+
+```{r compute-adjacency}
+
+```
+
+Convert to dissimilarity matrix
+```{r diss-matrix}
+
+```
+
+
+## Hierarchical clustering and module identification
+
+Call the hierarchical clustering function
+```{r hclust}
+
+```
+
+Module identification using dynamic tree cut:
+```{r cut-tree}
+
+```
+
+
+## Hierarchical clustering and module identification
+
+```{r cut-tree-output}
+
+```
+
+
+## Plot the dendrogram
+
+```{r plot-dendro}
+
+```
+
+
+## Compute eigengenes and organise labels
+
+```{r eigengenes}
+
+```
+
+
+## Correlate detected modules to clusters seen on PCA / TSNE
+
+```{r correlate-detected-modules}
+
+```
+
+
+
+```{r corr-heatmap, fig.height=4.5}
+
+```
+
+
+## Heatmap of central genes in key modules
+
+```{r gene-module-heatmap-setup}
+
+```
+
+
+## Heatmap of central genes in modules of interest
+
+```{r gene-module-heatmap-bad-colours}
+
+```
+
+But red-green colour schemes are bad (especially for red-green colour-blind people, who make up around 10% of the male population). So don't use them.
+
+Better...
+
+```{r gene-module-heatmap-good-colours}
+
+```
+
+
+
+
+## Acknowledgements
+
+* `scater` coauthors: Quin Wills, Kieran Campbell, Aaron Lun
+* Current supervisor: Oliver Stegle
+* scRNA-seq course materials: Vlad Kisilev, Tallulah Andrews and Martin Hemberg
+* James Kinchen and Cynthia Sandor for providing datasets
+* Everyone out there who makes their data and methods open and available
+
+
+
+

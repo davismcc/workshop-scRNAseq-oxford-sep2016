@@ -1,0 +1,427 @@
+---
+title: 'Single-Cell Workshop: WIMM, Oxford'
+author: "Davis McCarthy, EMBL-EBI"
+date: "9 September 2016"
+output: 
+    html_document:
+        toc: true
+        toc_float: true
+        highlight: tango
+        number_sections: true
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+suppressPackageStartupMessages(library(scater))
+```
+
+# Single-Cell Data Surgery: James Kinchen's Data 
+
+## Brief background
+
+A (very brief) summary of the objective / problem:
+
+- Inflammatory bowel diseases (IBD) are unpredictable both in terms of natural history and response to existing therapies
+- While bulk transcriptomic profiles are established in clinical use to predict outcome and treatment response in many cancers, they have not proved useful in the management of IBD.
+- This may be because transciptomic changes detected at bulk level largely reflect changes in the cellular composition of the mucosa.
+
+
+## Brief background 
+
+- James and colleagues are using scRNAseq and cell and gene clustering approaches to identify cell-type specific gene-expression signatures, and observing how these change in disease states.
+- Using this approach they hope to gain a more detailed picture of the immunopathology of IBD as well as identifying pathways for therapeutic intervention and clinically-useful biomarkers.
+
+
+## Tasks for this dataset 
+
+1. Load data and QC cells
+2. <del>Normalise data</del>
+3. Visualise data 
+4. [Advanced] Use `WGCNA` package to find gene modules
+
+# QC the data 
+
+## Task: QC the data {data-background="ebi_slide_bg.jpg"}
+
+* `calculateQCMetrics` using ERCC and MT genes as feature controls and bulk and empty wells as cell controls
+* `plot`, `plotQC`: highest expression in single cells, bulks and empty wells
+* `plotPhenoData`: look at total counts and total features, colour/size by other cell metadata
+* Decide on cell QC thresholds and flag cells to filter
+* `plotPCA`: with and without cell QC filtering
+
+What can you learn about this dataset?
+
+
+## Load data and default plot 
+
+```{r load-data, echo=TRUE}
+load("jk_anon_data.RData")
+sce <- newSCESet(countData = counts(scData), phenoData = scData@phenoData, 
+    featureData = scData@featureData)
+exprs(sce) <- exprs(scData)
+tpm(sce) <- tpm(scData)
+norm_exprs(sce) <- norm_exprs(scData)
+```
+
+```{r plot-data, fig.height = 4}
+plot(sce, colour_by = "description", nfeatures = 1000)
+```
+
+
+
+## Calculate QC metrics 
+
+```{r calc-qc-metrics}
+#Two sets of feature controls: ERCC spike ins & mitochondrial genes
+fctrls <- featureNames(sce)[grepl("ERCC-", featureNames(sce))]
+fctrls2 <- featureNames(sce)[grepl("MT", fData(sce)$chromosome_name)]
+#Cell controls are bulks and empty wells
+cctrls <- cellNames(sce)[pData(sce)$description == "bulk"]
+cctrls2 <- cellNames(sce)[pData(sce)$description == "empty"]
+
+#Set threshold of 80% of reads from feature controls to flag cell
+sce <- calculateQCMetrics(
+    sce,  
+    feature_controls = list(ERCC_ctrl = fctrls, mt_ctrl = fctrls2),
+    cell_controls = list(bulks = cctrls, empty = cctrls2),
+    nmads = 8, pct_feature_controls_threshold = 80)
+```
+
+
+## PlotQC: most highly expressed genes 
+
+```{r plotqc-highest-expression, fig.height=4}
+plotQC(sce, type = "highest-expression", exprs_values = "counts", n = 20) +
+    theme(axis.text.y = element_text(size = 10),
+              axis.title = element_text(size = 11))
+```
+
+
+## PlotQC: highly expressed in single cells 
+
+```{r plotqc-highest-exprs-single-cells, fig.height=4}
+p2 <- plotQC(sce[, !sce$is_cell_control],
+             type = "highest-expression")
+p2 + ggtitle(paste0("Single Cells\n",p2$labels$title))
+```
+
+
+## PlotQC: highly expressed in bulks 
+
+```{r plotqc-highest-exprs-bulks, fig.height=4}
+p3 <- plotQC(sce[, sce$is_cell_control_bulks],
+             type = "highest-expression")
+p3 + ggtitle(paste0("Bulks\n",p3$labels$title))
+```
+
+
+## PlotQC: highly expressed in empty wells 
+
+```{r plotqc-highest-exprs-empty-wells, fig.height=4}
+p4 <- plotQC(sce[, sce$is_cell_control_empty],
+             type = "highest-expression")
+p4 + ggtitle(paste0("Empty wells\n",p4$labels$title))
+```
+
+
+## PlotQC: expression frequency against mean 
+
+```{r plotqc-exprs-vs-mean, fig.height=4}
+plotQC(sce, type = "exprs-freq-vs-mean", feature_controls = fctrls)
+```
+
+
+## plotPhenoData: total features vs counts 
+
+```{r plotphenodata, fig.height=4}
+levels(sce$description) <- c(levels(sce$description), "failed")
+plotPhenoData(sce, aes(x = total_counts, y = total_features, 
+                       colour = description))
+```
+
+
+## plotPhenoData: decide QC thresholds 
+
+```{r set-qc-thresholds, fig.width=8}
+plotPhenoData(sce, 
+              aes(x = pct_tpm_top_200_features, y = total_features, 
+                  colour = description, size = CDNA)) + 
+    geom_hline(aes(yintercept = 2500)) + geom_vline(aes(xintercept = 90)) +
+    ggtitle("Epithelial cell QC")
+```
+
+
+## Filter cells 
+
+```{r filter-cells-2}
+sce$description[
+    sce$description == "cell" & 
+        sce$total_features < 2500 &
+        sce$pct_tpm_top_200_features > 75] <- "failed"
+knitr::kable(as.data.frame(table(sce$description)))
+```
+
+
+## Pre and post QC PCA plots 
+
+```{r pca-plot-pre-qc}
+plotPCA(sce, size_by = "CDNA", colour_by = "description")
+```
+
+
+```{r pca-plot-post-qc}
+plotPCA(filter(sce, description == "cell"), size_by = "CDNA", 
+        colour_by = "source")
+```
+
+
+
+# Visualise the data
+
+## Task: Inspect clusters using known cell type markers
+
+Make PCA and t-SNE plots, with points coloured/sized by known marker genes: *ITLN1*, *MUC2*, *MK167*, *MCM4*, *CEACAM1*, and *SLC26A3*
+
+
+## Inspect clusters with PCA and t-SNE
+
+```{r plotpca-1}
+plotPCA(sce[, sce$description == "cell"], 
+        size_by = "ITLN1", colour_by = "MUC2") + ggtitle("goblet cell")
+```
+
+
+
+```{r plot-tsne-1}
+plotTSNE(sce[, sce$description == "cell"], size_by = "ITLN1", 
+         colour_by = "MUC2", perplexity = 5, rand_seed = 5)  + ggtitle("goblet cell")
+```
+
+
+
+
+```{r plotpca-2}
+plotPCA(sce[, sce$description == "cell"], 
+        size_by = "MKI67", colour_by = "MCM4") + ggtitle("transit amplifying")
+```
+
+
+
+
+```{r plot-tsne-2}
+plotTSNE(sce[, sce$description == "cell"], size_by = "MKI67", 
+         colour_by = "MCM4", perplexity = 5, rand_seed = 5)
+```
+
+
+
+
+```{r plotpca-3}
+plotPCA(sce[, sce$description == "cell"], 
+        size_by = "SLC26A3", colour_by = "CEACAM1") + ggtitle("absorptive enterocyte")
+```
+
+
+
+```{r plot-tsne-3}
+plotTSNE(sce[, sce$description == "cell"], size_by = "SLC26A3", 
+         colour_by = "CEACAM1", perplexity = 5, rand_seed = 5)
+```
+
+
+
+
+# Find gene modules [advanced]
+
+## Find gene modules with WGCNA
+
+Requires the following packages: `WGCNA` (gene correlation analysis) and `gplots` (heatmaps)
+
+```{r wgcna}
+##WGCNA analysis##
+##################
+#source("http://bioconductor.org/biocLite.R")
+#biocLite(c("AnnotationDbi", "impute", "GO.db", "preprocessCore"))
+#install.packages('WGCNA')
+#install.packages("gplots")
+suppressPackageStartupMessages(library("WGCNA"))
+suppressPackageStartupMessages(library("gplots"))
+```
+
+## Task: find and analyse gene modules
+
+* Use normalised expression values in SCESet to compute an adjacency matrix in `WGCNA` 
+* Use hierarchical clustering to get a dendrogram (tree) for genes
+* Find central genes for important modules
+* Visualise with a heatmap
+
+
+## Organise data
+
+Extract normalised expression data for cells passing QC
+```{r extract-norm-data}
+myData <- norm_exprs(sce)[
+    !apply(norm_exprs(sce)[, sce$description == "cell"], 1, anyNA), 
+    sce$description == "cell"]
+```
+
+Transpose the dataset - need samples as rows, features as columns
+```{r transpose-dataset}
+datExpr = as.data.frame(t(myData))
+```
+
+
+## Compute adjacency matrix and convert to distance
+
+```{r compute-adjacency}
+adjacency <- adjacency(datExpr, power = 12, type = "signed hybrid",
+                       corFnc = "bicor", 
+                       corOptions = "use = 'p', maxPOutliers = 0.05")
+```
+
+Convert to dissimilarity matrix
+```{r diss-matrix}
+diss <- 1 - adjacency
+```
+
+
+## Hierarchical clustering and module identification
+
+Call the hierarchical clustering function
+```{r hclust}
+geneTree <- hclust(as.dist(diss), method = "average")
+```
+
+Module identification using dynamic tree cut:
+```{r cut-tree}
+dynamicMods = cutreeDynamic(
+    dendro = geneTree, distM = diss, deepSplit = 2, pamStage = FALSE, 
+    pamRespectsDendro = FALSE, minClusterSize = 30, cutHeight = 0.99)
+```
+
+
+## Hierarchical clustering and module identification
+
+```{r cut-tree-output}
+table(dynamicMods)
+names(dynamicMods) <- colnames(datExpr)
+# Convert numeric lables into colors
+dynamicColors <- labels2colors(dynamicMods)
+table(dynamicColors)
+```
+
+
+## Plot the dendrogram
+
+```{r plot-dendro}
+plotDendroAndColors(
+    geneTree, dynamicColors, "Dynamic Tree Cut", dendroLabels = FALSE, 
+    hang = 0.03, addGuide = TRUE, guideHang = 0.05,
+    main = "Gene dendrogram and module colors")
+```
+
+
+## Compute eigengenes and organise labels
+
+```{r eigengenes}
+MEList <- moduleEigengenes(datExpr, colors = dynamicMods)
+MEs <- MEList$eigengenes
+# Rename to moduleColors
+moduleColors <- dynamicColors
+# Construct numerical labels corresponding to the colors
+colorOrder <- c("grey", standardColors(100))
+moduleLabels <- match(moduleColors, colorOrder) - 1
+# Recalculate MEs with color labels
+MEs0 <- moduleEigengenes(datExpr, moduleColors)$eigengenes
+MEs <- orderMEs(MEs0)
+# names (colors) of the modules
+modNames = substring(names(MEs), 3)
+```
+
+
+## Correlate detected modules to clusters seen on PCA / TSNE
+
+```{r correlate-detected-modules}
+myclust <- pData(sce)[sce$description == "cell", "subset"]
+datTraits <- data.frame(
+    goblet = as.numeric(myclust == " goblet"),
+    ta = as.numeric(myclust == " ta"),
+    enterocyte = as.numeric(myclust == " enterocyte")
+)
+nSamples <- nrow(datExpr);
+moduleTraitCor <- cor(removeGreyME(MEs), datTraits, use = "p")
+moduleTraitPvalue <- corPvalueStudent(moduleTraitCor, nSamples)
+# Will display correlations and their p-values
+textMatrix <- paste(signif(moduleTraitCor, 2), "\n(",
+                   signif(moduleTraitPvalue, 1), ")", sep = "");
+dim(textMatrix) <- dim(moduleTraitCor)
+#sizeGrWindow(10,5)
+```
+
+
+
+
+```{r corr-heatmap, fig.height=4.5}
+par(mar = c(4, 8.5, 3, 3))
+labeledHeatmap(Matrix = moduleTraitCor, xLabels = names(datTraits),
+               yLabels = names(MEs), ySymbols = names(MEs),
+               colorLabels = FALSE, colors = blueWhiteRed(50),
+               textMatrix = textMatrix, setStdMargins = FALSE,
+               cex.text = 1, zlim = c(-1,1), main = paste("Module-trait relationships"))
+```
+
+
+## Heatmap of central genes in key modules
+
+```{r gene-module-heatmap-setup}
+geneModuleMembership <- as.data.frame(cor(datExpr, MEs, use = "p"))
+myModGenes <- character()
+for (i in c(2,3,6)) {
+    myModule <- geneModuleMembership[moduleColors == modNames[i], i]
+    names(myModule) <- row.names(geneModuleMembership)[moduleColors == modNames[i]]
+    myModule <- myModule[order(myModule, decreasing = TRUE)]
+    myModGenes <- c(myModGenes, head(names(myModule), 15))
+}
+myModExprs <- datExpr[,myModGenes]
+myModExprs <- t(as.matrix(myModExprs))
+hc <- hclust(as.dist(1 - cor(myModExprs, method = "pearson")), 
+             method = "average")
+```
+
+
+## Heatmap of central genes in modules of interest
+
+```{r gene-module-heatmap-bad-colours}
+heatmap.2(myModExprs, Rowv = NULL, Colv = as.dendrogram(hc), 
+          labCol = rownames(datExpr), col = redgreen(75), scale = "none", 
+          density.info = "none", trace = "none", margins = c(5, 5), 
+          cexRow = 0.5, cexCol = 0.5, dendrogram = "col")
+```
+
+But red-green colour schemes are bad (especially for red-green colour-blind people, who make up around 10% of the male population). So don't use them.
+
+Better...
+
+```{r gene-module-heatmap-good-colours}
+heatmap.2(myModExprs, Rowv = NULL, Colv = as.dendrogram(hc), 
+          labCol = rownames(datExpr), 
+          col = blueWhiteRed(75), scale = "none", 
+          density.info = "none", trace = "none", margins = c(5, 5), 
+          cexRow = 0.5, cexCol = 0.5, dendrogram = "col")
+```
+
+
+
+
+## Acknowledgements
+
+* `scater` coauthors: Quin Wills, Kieran Campbell, Aaron Lun
+* Current supervisor: Oliver Stegle
+* scRNA-seq course materials: Vlad Kisilev, Tallulah Andrews and Martin Hemberg
+* James Kinchen and Cynthia Sandor for providing datasets
+* Everyone out there who makes their data and methods open and available
+
+
+
+
