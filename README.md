@@ -22,7 +22,7 @@ There are two versions of each RMarkdown document, a "skeleton" version without 
 
 **HTML files:**
 
-HTML reports produced by running the above ("complete") Rmd files:
+HTML reports produced by running the above ("complete") Rmd files in case you want to check the expected code output and plots.
 
 * `cs_surgery_report_complete.html`
 * `jk_surgery_report_complete.html`
@@ -49,22 +49,22 @@ devtools::install_github('tallulandrews/M3Drop')
 ```
 
 
-## Resources
+## Useful Resources
 
-`scater` pre-print:
+* `scater` pre-print:
 http://biorxiv.org/content/early/2016/08/15/069633
 
-`scater` tutorials with large, open datasets:
+* `scater` tutorials with large, open datasets:
 https://github.com/davismcc/scater_tutorials_open_data
 
-Hemberg Lab scRNA-seq course:
+* Hemberg Lab scRNA-seq course:
 http://hemberg-lab.github.io/scRNA.seq.course/
 
-F1000 Research "A step-by-step workflow for low-level analysis of single-cell RNA-seq data": 
+* F1000 Research "A step-by-step workflow for low-level analysis of single-cell RNA-seq data": 
 http://f1000research.com/articles/5-2122/v1
 
-conquer: a repository for processed, QC'd single-cell datasets. 
+* conquer: a repository for processed, QC'd single-cell datasets. 
 http://imlspenticton.uzh.ch:3838/conquer/
 
-(Long!) list of single-cell tools and software:
+* (Long!) list of single-cell tools and software:
 https://github.com/seandavi/awesome-single-cell
