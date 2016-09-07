@@ -219,13 +219,16 @@ knitr::kable(as.data.frame(table(keep_gene)))
 ```{r normalise-scran}
 library(scran)
 sce <- sce[fData(sce)$use, sce$use]
-isSpike(sce) <- "ERCC_ctrl"
 ## If the above line throws an error, try the following:
-## isSpike(sce) <- grepl("ERCC-", featureNames(sce))
+isSpike(sce) <- grepl("ERCC-", featureNames(sce))
 sce <- computeSumFactors(sce, sizes = c(20, 40, 60, 80))
 summary(sizeFactors(sce))
-sce <- computeSpikeFactors(sce, type = "ERCC_ctrl", general.use = FALSE)
-sce <- normalise(sce, return_norm_as_exprs = FALSE)
+sce <- computeSpikeFactors(sce, general.use = FALSE)
+sce <- normalise(sce)
+## in the devel and future versions of scater and scran, the above will be done as so...
+# isSpike(sce) <- "ERCC_ctrl"
+# sce <- computeSpikeFactors(sce, type = "ERCC_ctrl", general.use = FALSE)
+# sce <- normalise(sce, return_norm_as_exprs = FALSE)
 ```
 
 
