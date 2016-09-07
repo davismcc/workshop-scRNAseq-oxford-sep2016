@@ -12,8 +12,8 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE, 
-                      warning = FALSE, fig.align="center")
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, message = FALSE, 
+                      warning = FALSE, fig.align = "center")
 suppressPackageStartupMessages(library(scater))
 par(mar = c(3, 1, 1, 3))
 ```
@@ -220,6 +220,8 @@ knitr::kable(as.data.frame(table(keep_gene)))
 library(scran)
 sce <- sce[fData(sce)$use, sce$use]
 isSpike(sce) <- "ERCC_ctrl"
+## If the above line throws an error, try the following:
+## isSpike(sce) <- grepl("ERCC-", featureNames(sce))
 sce <- computeSumFactors(sce, sizes = c(20, 40, 60, 80))
 summary(sizeFactors(sce))
 sce <- computeSpikeFactors(sce, type = "ERCC_ctrl", general.use = FALSE)
@@ -375,6 +377,8 @@ head(design)
 dge <- estimateDisp(dge, design, trend.method = "none")
 ```
 
+NB: estimating the dispersions takes ~1 minute on my laptop and could take longer on older machines.
+
 ## edgeR plot biological CV
 
 ```{r plot-bcv, fig.height=5}
@@ -411,30 +415,36 @@ plotExpression(sce, de_tags[1:6], x = "Genotype", colour_by = "Lab", ncol = 3)
 
 ```{r m3drop, fig.height=4.5}
 library("M3Drop")
-m3_fit <- M3DropDropoutModels(counts(sce))
+norm_counts <- t(t(counts(sce)) / sizeFactors(sce))
+m3_fit <- M3DropDropoutModels(norm_counts)
 ```
 
 ## M3Drop - DE genes
 
 ```{r m3drop-de, fig.height=5}
-m3_de <- M3DropDifferentialExpression(counts(sce), 
+m3_de <- M3DropDifferentialExpression(norm_counts, 
 			mt_method = "fdr", mt_threshold = 0.01)
 ```
 
 
+## M3Drop - heatmap (Genotype)
 
-## scDD
-
-In principle, the below should work...but it did not for me. 
-
-As it is not on CRAN or Bioconductor, there is no established forum for asking questions and obtaining advice, and (it would appear here) that it is not as reliable as it should be.
-
-```{r scdd, eval=FALSE}
-eset <- ExpressionSet(assayData(sce))
-exprs(eset) <- get_exprs(sce, "exprs")
-eset$condition <- as.numeric(as.factor(sce$Genotype))
-sdd_res <- scDD(eset, testZeroes = FALSE)
+```{r m3drop-heatmap-genotype, fig.height=10}
+heat_out <- M3DropExpressionHeatmap(m3_de$Gene, norm_counts, 
+			cell_labels = sce$Genotype)
 ```
+
+## M3Drop - heatmap (Lab)
+
+```{r m3drop-heatmap-lab, fig.height=10}
+heat_out <- M3DropExpressionHeatmap(m3_de$Gene, norm_counts, 
+			cell_labels = sce$Lab)
+```
+
+Beware batch effects!
+
+
+## Final word
 
 I'll leave it with you to explore further options for DE testing. Many good tools are available, but it's still the wild west out there.
 

@@ -330,15 +330,33 @@ library(edgeR)
 
 ```{r m3drop, fig.height=4.5}
 library("M3Drop")
-m3_fit <- M3DropDropoutModels(counts(sce))
+norm_counts <- t(t(counts(sce)) / sizeFactors(sce))
+m3_fit <- M3DropDropoutModels(norm_counts)
 ```
 
 ## M3Drop - DE genes
 
 ```{r m3drop-de, fig.height=5}
-m3_de <- M3DropDifferentialExpression(counts(sce), 
+m3_de <- M3DropDifferentialExpression(norm_counts, 
 			mt_method = "fdr", mt_threshold = 0.01)
 ```
+
+
+## M3Drop - heatmap (Genotype)
+
+```{r m3drop-heatmap-genotype, fig.height=5}
+heat_out <- M3DropExpressionHeatmap(m3_de$Gene, norm_counts, 
+			cell_labels = sce$Genotype)
+```
+
+## M3Drop - heatmap (Lab)
+
+```{r m3drop-heatmap-lab, fig.height=5}
+heat_out <- M3DropExpressionHeatmap(m3_de$Gene, norm_counts, 
+			cell_labels = sce$Lab)
+```
+
+Beware batch effects!
 
 
 

@@ -32,13 +32,13 @@ The above should give you everything you need to work along with the analyses in
 
 ## R packages
 
-You will need to have the following R packages installed: `scater`, `WGCNA`, `gplots`.
+You will need to have the following R packages installed: `scater`, `scran`, `WGCNA`, `gplots`. To get the most out of `scater` it is benefical also to have `Rtsne`, `mvoutlier` and `cowplot` installed. We will use the development versions of the Bioconductor packages to get the 
 
 ```{r}
-install.packages("gplots")
+install.packages(c("gplots", "Rtsne", "mvoutlier", "cowplot"))
 ## try http:// if https:// URLs are not supported
 source("https://bioconductor.org/biocLite.R")
-biocLite(c("scater", "WGCNA")
+biocLite(c("scater", "WGCNA", "scran"))
 ```
 
 Optional (but fun): `M3Drop`.
